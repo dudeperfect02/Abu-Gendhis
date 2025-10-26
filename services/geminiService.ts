@@ -1,3 +1,4 @@
+
 import { GoogleGenAI, Type, Modality } from "@google/genai";
 import React from 'react';
 
@@ -86,7 +87,11 @@ function splitText(text: string, maxLength: number): string[] {
 
 const TTS_CHUNK_LIMIT = 4500; // Safe character limit for each TTS API call
 
-export const generateSpeech = async (text: string): Promise<string | null> => {
+export const generateSpeech = async (
+    text: string,
+    voice: string,
+    style: string
+): Promise<string | null> => {
     if (!text.trim()) {
         console.warn("generateSpeech was called with empty text.");
         return null;
@@ -96,14 +101,16 @@ export const generateSpeech = async (text: string): Promise<string | null> => {
         const audioDataChunks: Uint8Array[] = [];
 
         for (const chunk of textChunks) {
+            const promptText = style.trim() ? `${style.trim()}: ${chunk}` : chunk;
+
             const response = await ai.models.generateContent({
                 model: "gemini-2.5-flash-preview-tts",
-                contents: [{ parts: [{ text: chunk }] }],
+                contents: [{ parts: [{ text: promptText }] }],
                 config: {
                     responseModalities: [Modality.AUDIO],
                     speechConfig: {
                         voiceConfig: {
-                            prebuiltVoiceConfig: { voiceName: 'Kore' },
+                            prebuiltVoiceConfig: { voiceName: voice },
                         },
                     },
                 },
@@ -202,10 +209,20 @@ export const generateStory = async (
         }
 
         let currentPrompt = "";
+        const contextStory = fullStory.slice(-50000); // Use last 50k chars for context
+
         if (i === 0) {
             currentPrompt = `Here is the story idea: "${initialPrompt}". Begin writing the first part of the story. Write approximately ${CHARS_PER_CHUNK} characters. Do not write the whole story, just the beginning.`;
+        } else if (i === NUM_CHUNKS - 1) {
+            // Last chunk: prompt for a conclusion
+            currentPrompt = `Here is the original story idea: "${initialPrompt}".
+Here is the story so far:
+---
+${contextStory}
+---
+This is the final part of the story. Please bring the narrative to a satisfying and conclusive end. Resolve the main plot, complete character arcs, and provide a definitive resolution. Write this final part to complete the story.`;
         } else {
-            const contextStory = fullStory.slice(-50000); // Use last 50k chars for context
+            // Middle chunks: prompt for continuation
             currentPrompt = `Here is the original story idea: "${initialPrompt}".
 Here is the story so far:
 ---
@@ -226,13 +243,34 @@ Please continue the story from where it left off. Introduce new plot points, dee
                 }
             });
             
-            // Strictly enforce the character limit per chunk
-            const newChunk = response.text.slice(0, CHARS_PER_CHUNK);
+            const generatedText = response.text;
+            let newChunk = '';
+
+            // For all but the last chunk, try to truncate at a sentence end.
+            if (i < NUM_CHUNKS - 1 && generatedText.length > CHARS_PER_CHUNK) {
+                const cutText = generatedText.substring(0, CHARS_PER_CHUNK);
+                const lastSentenceEnd = Math.max(
+                    cutText.lastIndexOf('.'),
+                    cutText.lastIndexOf('!'),
+                    cutText.lastIndexOf('?')
+                );
+
+                // Use the sentence end if it's found and is reasonably far in
+                if (lastSentenceEnd > CHARS_PER_CHUNK * 0.8) {
+                    newChunk = cutText.substring(0, lastSentenceEnd + 1);
+                } else {
+                    newChunk = cutText; // Fallback to hard cut if no good sentence end is found
+                }
+            } else {
+                // For the last chunk, don't truncate. Let it finish the story.
+                newChunk = generatedText;
+            }
+
 
             if (newChunk) {
                fullStory += newChunk;
                const percentage = ((i + 1) / NUM_CHUNKS) * 100;
-               const status = `Weaving part ${i + 2} of ${NUM_CHUNKS}...`;
+               const status = i === NUM_CHUNKS - 1 ? "Finishing the story..." : `Weaving part ${i + 2} of ${NUM_CHUNKS}...`;
                onProgress({ percentage, chunk: newChunk, status });
             }
 
