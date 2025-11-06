@@ -1,4 +1,3 @@
-
 import React, { useState, useCallback, useRef } from 'react';
 import { StoryInput } from './components/StoryInput';
 import { StoryDisplay } from './components/StoryDisplay';
@@ -6,6 +5,7 @@ import { generateStory, StoryDetails } from './services/geminiService';
 
 const App: React.FC = () => {
     const [prompt, setPrompt] = useState<string>('');
+    const [storyLength, setStoryLength] = useState<'very short' | 'short' | 'medium' | 'long'>('medium');
     const [storyChunks, setStoryChunks] = useState<string[]>([]);
     const [storyDetails, setStoryDetails] = useState<StoryDetails | null>(null);
     const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -42,14 +42,14 @@ const App: React.FC = () => {
                     setError(update.status);
                     setIsLoading(false);
                 }
-            }, isCancelledRef);
+            }, isCancelledRef, storyLength);
         } catch (e) {
             const errMessage = e instanceof Error ? e.message : 'An unexpected error occurred.';
             setError(`Generation failed: ${errMessage}`);
         } finally {
             setIsLoading(false);
         }
-    }, [prompt, isLoading]);
+    }, [prompt, isLoading, storyLength]);
 
     const handleStop = useCallback(() => {
         isCancelledRef.current = true;
@@ -74,7 +74,7 @@ const App: React.FC = () => {
 
     return (
         <div className="min-h-screen bg-gray-900 text-gray-200 font-sans flex flex-col items-center p-4 sm:p-6 md:p-8">
-            <div className="w-full max-w-4xl mx-auto">
+            <div className="w-full max-w-7xl mx-auto">
                 <header className="text-center mb-8">
                     <h1 className="text-4xl sm:text-5xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-indigo-500">
                         AI Story Weaver
@@ -88,6 +88,8 @@ const App: React.FC = () => {
                     <StoryInput
                         prompt={prompt}
                         setPrompt={setPrompt}
+                        storyLength={storyLength}
+                        setStoryLength={setStoryLength}
                         onGenerate={handleGenerate}
                         onStop={handleStop}
                         isLoading={isLoading}
